@@ -1,0 +1,310 @@
+api_key: null
+allowed_origins:
+- '*'
+systems:
+- id: candidate-career-coach
+  name: Candidate Career Coach (Jack)
+  description: Autonomous career partner for candidates providing coaching, onboarding,
+    and interview prep through text and voice.
+  topology: orchestrator
+  agents:
+  - type: writer
+    prompt: 'You are Jack, the Lead Career Orchestrator. Your job is to route candidate
+      requests to the correct specialist. Route general chat and motivational coaching
+      to coach_3. Route deep interview prep, job-specific analysis, and company research
+      to analyst_1. Route voice-transcribed onboarding sessions and profile extraction
+      tasks to screener_2. Always respond with the appropriate agent ID or {''agent'':
+      ''__done__'', ''response'': ''...''} when the task is complete.'
+    tools: []
+  - type: analyst
+    prompt: You are a Career Strategy Analyst. You specialize in interview preparation
+      and job-candidate alignment. Use score_candidate to evaluate how a candidate's
+      background fits specific job descriptions from the context. Use tavily_search
+      or linkedin_company to find deep insights about hiring companies to give the
+      candidate a competitive edge during interviews.
+    tools:
+    - score_candidate
+    - tavily_search
+    - linkedin_company
+    - calculate
+  - type: screener
+    prompt: You are a Profile Extraction Specialist. You take unstructured conversational
+      transcripts from onboarding sessions and extract structured professional data.
+      Identify work history, education, core skills, and career intent. Use parse_document
+      if the candidate provides links to portfolios or resumes during the session.
+    tools:
+    - parse_document
+  - type: writer
+    prompt: You are Jack, a high-EQ Career Coach. Your goal is to provide supportive,
+      professional, and actionable career advice. You handle general inquiries about
+      career paths, resume tips, and workplace navigation. Focus on maintaining a
+      conversational, encouraging tone consistent with a long-term career partner.
+    tools: []
+- id: employer-intake-partner
+  name: Employer Intake Partner (Jill)
+  description: System for gathering hiring requirements from employers via conversation
+    and document parsing.
+  topology: sequential
+  agents:
+  - type: analyst
+    prompt: "You are Jill, an expert talent intake specialist. Your goal is to analyze\
+      \ employer input\u2014whether from chat messages or uploaded documents\u2014\
+      to extract core hiring requirements, technical skills, and cultural nuances.\
+      \ Use parse_document to ingest files and tavily_search to research the company's\
+      \ existing online presence for context."
+    tools:
+    - parse_document
+    - tavily_search
+    - calculate
+  - type: writer
+    prompt: You are a professional recruiting coordinator. Take the raw data and analysis
+      provided by the analyst and synthesize it into a polished, structured hiring
+      brief. Highlight the 'cultural vibe' and specific success markers for the role
+      to ensure candidates feel the company's unique identity.
+    tools:
+    - parse_document
+  - type: validator
+    prompt: Review the finalized hiring brief. Ensure that it contains a clear job
+      title, specific technical requirements, and a defined experience level. If the
+      brief is too vague to begin a search (e.g., missing specific skills or seniority),
+      use reject_output with a specific explanation; otherwise, use accept_output.
+    tools:
+    - accept_output
+    - reject_output
+- id: recruitment-match-engine
+  name: Recruitment Match Engine
+  description: Core engine for semantic matching, scoring, and explaining fit between
+    candidates and roles.
+  topology: orchestrator
+  agents:
+  - type: writer
+    prompt: You are the Match Engine Coordinator. Route job-seeking candidate requests
+      to analyst_1 for bulk job ranking. Route employer-side talent sourcing requests
+      to analyst_1 for candidate shortlisting. For deep-dive compatibility reports
+      between a specific person and a specific role, route to screener_2. Once a specialist
+      provides the data, format the final response according to the requested schema
+      and use the __done__ state.
+    tools: []
+  - type: analyst
+    prompt: You are the Match Specialist. Use score_candidate to evaluate the semantic
+      overlap between candidate profiles and job descriptions. Use calculate to normalize
+      scores on a 0-100 scale. Identify key skill tags and experience highlights that
+      justify the match score for high-volume list views.
+    tools:
+    - score_candidate
+    - calculate
+    - parse_document
+  - type: screener
+    prompt: "You are the Deep Evaluation specialist. Use parse_document to ingest\
+      \ full CVs and detailed job specs. Your goal is to provide 'vibe assessments'\u2014\
+      qualitative insights into personality, culture fit, and career trajectory that\
+      \ go beyond simple skill matching. Provide structured reasoning for your scores."
+    tools:
+    - parse_document
+    - score_candidate
+endpoints:
+- slug: candidate-chat-handler
+  description: Handles general career coaching interactions and motivational advice.
+  usage: Called when the candidate sends a message in the main chat interface for
+    general career support.
+  system_id: candidate-career-coach
+  contract:
+  - name: input
+    type: string
+    description: The natural language message or question from the candidate.
+  response:
+  - name: advice
+    type: string
+    description: The AI-generated career coaching response.
+  - name: suggested_actions
+    type: array
+    description: A list of concrete next steps for the candidate to take.
+  prompt: 'As Jack the Career Coach, respond to the candidate''s input: {input}. Provide
+    empathetic advice and list 2-3 immediate actions they can take to progress their
+    career goals.'
+- slug: chat-jack-api
+  description: Provides personalized interview prep and job-specific strategy using
+    RAG context.
+  usage: Called when a candidate asks for help preparing for a specific job interview
+    or application.
+  system_id: candidate-career-coach
+  contract:
+  - name: message
+    type: string
+    description: The candidate's specific request or question about a role.
+  - name: context
+    type: object
+    description: A collection of data including the target job description and the
+      candidate's current profile.
+  response:
+  - name: response
+    type: string
+    description: Detailed strategic advice for the specific job or interview.
+  - name: fit_score
+    type: number
+    description: A calculated score (1-10) of how well the candidate matches the target
+      role.
+  - name: resources
+    type: array
+    description: Links to company research or specific skills to brush up on.
+  prompt: 'Analyze the request: {message} within the provided {context}. Evaluate
+    the candidate''s fit for the role, identify potential interview questions they
+    might face, and suggest research areas for the hiring company.'
+- slug: process-voice-onboarding
+  description: Extracts structured profile data from onboarding voice transcripts.
+  usage: Called after an audio onboarding session is transcribed to update the candidate's
+    professional profile.
+  system_id: candidate-career-coach
+  contract:
+  - name: transcript
+    type: string
+    description: The full text transcript of the voice onboarding session.
+  response:
+  - name: professional_history
+    type: array
+    description: List of past roles, companies, and durations extracted from the talk.
+  - name: career_goals
+    type: array
+    description: Specific career objectives and desired roles mentioned by the candidate.
+  - name: extracted_skills
+    type: array
+    description: A list of technical and soft skills identified in the conversation.
+  prompt: 'Review the onboarding transcript: {transcript}. Extract the candidate''s
+    professional history, core skills, and long-term career goals into a structured
+    format for their profile database.'
+- slug: employer-briefing-chat
+  description: Handles the interactive intake conversation where Jill gathers role
+    requirements from the employer.
+  usage: Called whenever the employer sends a message in the intake chat interface.
+  system_id: employer-intake-partner
+  contract:
+  - name: input
+    type: string
+    description: The natural language message sent by the employer
+  - name: chat_history
+    type: array
+    description: Previous messages in the conversation to maintain context
+  response:
+  - name: reply
+    type: string
+    description: Jill's conversational response or follow-up question
+  - name: extracted_requirements
+    type: object
+    description: Current structured map of job requirements found so far
+  - name: is_complete
+    type: boolean
+    description: Whether Jill has enough information to finalize the brief and redirect
+      to the dashboard
+  prompt: 'Analyze the employer''s message: ''{input}''. Considering the context of
+    {chat_history}, extract any new hiring requirements. Respond as Jill, maintaining
+    a helpful and professional tone. If key details like salary range, tech stack,
+    or location are missing, ask for them. Set is_complete to true only when the profile
+    is ready for sourcing.'
+- slug: parse-job-document
+  description: Extracts structured job requirements and cultural vibe from an uploaded
+    JD or company file.
+  usage: Called when an employer uploads a PDF or Docx file to speed up the briefing
+    process.
+  system_id: employer-intake-partner
+  contract:
+  - name: document_url
+    type: string
+    description: The URL or path to the uploaded job description or company document
+  response:
+  - name: job_profile
+    type: object
+    description: Structured job data including title, skills, experience, and cultural
+      markers
+  - name: summary
+    type: string
+    description: A high-level summary of the role extracted from the document
+  - name: missing_fields
+    type: array
+    description: A list of required information not found in the document that Jill
+      should ask about next
+  prompt: Use the parse_document tool to read the file at {document_url}. Extract
+    all relevant hiring criteria into a structured job_profile. Specifically look
+    for the 'cultural vibe' and soft skills. Provide a concise summary of the role
+    and identify any missing_fields that we still need from the employer to begin
+    sourcing.
+- slug: matched-jobs-fetch
+  description: Provides a list of curated job matches for the candidate with match
+    scores and tags
+  usage: Called when a candidate logs into their dashboard to see relevant opportunities.
+  system_id: recruitment-match-engine
+  contract:
+  - name: candidate_id
+    type: string
+    description: Unique identifier of the candidate seeking jobs
+  - name: candidate_profile_summary
+    type: string
+    description: A text summary of the candidate's skills, experience, and preferences
+  response:
+  - name: matches
+    type: array
+    description: List of job objects containing job_id, role_title, company_name,
+      match_score, and skill_tags
+  - name: recommendation_logic
+    type: string
+    description: Brief explanation of why these specific jobs were prioritized
+  prompt: 'Find and rank the best job matches for candidate {candidate_id} based on
+    their profile: {candidate_profile_summary}. Calculate match scores and generate
+    relevant tags for each role.'
+- slug: initial-candidates-fetch
+  description: Provides the curated shortlist of candidates for an employer's open
+    role
+  usage: Called when a hiring manager opens a specific job requisition to see top
+    applicants.
+  system_id: recruitment-match-engine
+  contract:
+  - name: job_id
+    type: string
+    description: Unique identifier of the job posting
+  - name: job_description
+    type: string
+    description: The full text or brief of the job requirements
+  response:
+  - name: shortlist
+    type: array
+    description: Array of candidate profiles with name, match_summary, and a qualitative
+      vibe_assessment score
+  - name: pool_health
+    type: string
+    description: Description of how well the current applicant pool matches the job
+      brief
+  prompt: Analyze candidates against job {job_id} using description {job_description}.
+    Generate a shortlist with match summaries and evaluate the 'vibe' for each applicant
+    to ensure culture alignment.
+- slug: analyze-match-deep
+  description: Calculate semantic match score and generate 'vibe' summary between
+    a candidate and job brief
+  usage: Called when a recruiter clicks into a specific candidate-job pair for a detailed
+    breakdown.
+  system_id: recruitment-match-engine
+  contract:
+  - name: candidate_id
+    type: string
+    description: Identifier for the candidate being analyzed
+  - name: job_id
+    type: string
+    description: Identifier for the specific job role
+  - name: cv_url
+    type: string
+    description: Link to the candidate's uploaded resume or profile document
+  - name: jd_url
+    type: string
+    description: Link to the official job description document
+  response:
+  - name: overall_score
+    type: number
+    description: Weighted compatibility score from 0 to 100
+  - name: reasoning
+    type: object
+    description: Detailed breakdown of strengths, gaps, and culture fit assessment
+  - name: interview_questions
+    type: array
+    description: Suggested questions for the recruiter to ask based on identified
+      gaps
+  prompt: Perform a deep multi-vector analysis for candidate {candidate_id} and job
+    {job_id}. Parse the documents at {cv_url} and {jd_url} to generate an overall_score
+    and a qualitative reasoning report focusing on culture fit and long-term potential.
